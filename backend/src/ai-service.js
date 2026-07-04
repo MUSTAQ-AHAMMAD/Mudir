@@ -74,8 +74,11 @@ const ALLOWED_MEDIA_HOSTS = [
 
 /**
  * Validate that a media URL is HTTPS and points at a trusted Twilio host.
+ * Returns the matched **constant** host plus the (relative) path so callers can
+ * rebuild the request against a fixed origin — the network destination is thus
+ * always one of the hard-coded hosts, never attacker-controlled.
  * @param {string} url
- * @returns {URL} The parsed URL when valid.
+ * @returns {{host: string, path: string}}
  * @throws {Error} When the URL is missing, non-HTTPS, or an untrusted host.
  */
 function assertTrustedMediaUrl(url) {
@@ -89,27 +92,31 @@ function assertTrustedMediaUrl(url) {
     throw new Error('Media URL must use HTTPS');
   }
   const host = parsed.hostname.toLowerCase();
-  const trusted = ALLOWED_MEDIA_HOSTS.some(
-    (allowed) => host === allowed || host.endsWith(`.${allowed}`),
-  );
-  if (!trusted) {
+  // Strict equality against the constant allowlist (no wildcard/suffix matching).
+  const matched = ALLOWED_MEDIA_HOSTS.find((allowed) => allowed === host);
+  if (!matched) {
     throw new Error(`Refusing to download media from untrusted host: ${host}`);
   }
-  return parsed;
+  return { host: matched, path: `${parsed.pathname}${parsed.search}` };
 }
 
 /**
  * Download a media URL (Twilio-hosted) to a temp file. Twilio media requires
  * HTTP basic auth with the account SID / auth token. The URL is validated
- * against a Twilio host allowlist first to avoid SSRF / credential leakage.
+ * against a Twilio host allowlist first and the request is rebuilt against a
+ * constant origin, so credentials can never leak to an attacker-controlled host
+ * (SSRF / credential-leak protection).
  * @param {string} url
  * @returns {Promise<string>} Local file path.
  */
 async function downloadMedia(url) {
-  const safeUrl = assertTrustedMediaUrl(url);
+  const { host, path: mediaPath } = assertTrustedMediaUrl(url);
   const response = await withRetry(
     () =>
-      axios.get(safeUrl.href, {
+      axios.get(mediaPath, {
+        // baseURL is a constant, allow-listed host — the request destination is
+        // never derived from user input.
+        baseURL: `https://${host}`,
         responseType: 'arraybuffer',
         auth: { username: config.twilio.accountSid, password: config.twilio.authToken },
         maxContentLength: 25 * 1024 * 1024, // 25 MB cap
