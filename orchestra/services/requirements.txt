@@ -1,0 +1,29 @@
+# ORCHESTRA self-hosted AI services — Python dependencies.
+#
+# Install into the virtual environment created by auto-install.sh:
+#     source ~/.orchestra/venv/bin/activate
+#     pip install -r orchestra/services/requirements.txt
+#
+# ---------------------------------------------------------------------------
+# PyTorch — install the build that matches your hardware BEFORE this file, so
+# the correct wheel is used by transformers / sentence-transformers:
+#
+#   GPU (CUDA 12.1):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   CPU only:
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# auto-install.sh already does this automatically based on hardware detection.
+# ---------------------------------------------------------------------------
+
+# LLM (Ollama) HTTP client + retries
+requests>=2.32.2,<3
+urllib3>=2.7.0,<3
+
+# Embeddings (BGE-M3) and sentiment / translation models
+sentence-transformers>=5.0,<6
+transformers>=5.3.0,<6
+sentencepiece>=0.2.1,<1
+
+# Vector database
+chromadb>=0.5.23,<1
