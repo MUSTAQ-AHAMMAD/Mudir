@@ -1,0 +1,20 @@
+# docker-compose for local development.
+# Runs the Mudir backend. Database is Supabase (hosted) — configure SUPABASE_*
+# in your .env. To expose the local webhook to Twilio, tunnel with e.g. ngrok:
+#   ngrok http 3000   (then set PUBLIC_URL to the ngrok https URL)
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: development
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
