@@ -141,11 +141,19 @@ class ProjectManager:
             "tasks": list(tasks),
         }
 
-    async def update_project_status(self, project_id: Any, status: Any) -> Any:
-        """Update the overall status of a project."""
+    async def update_project_status(
+        self,
+        project_id: Any,
+        status: Any,
+        *,
+        current_stage: Optional[str] = None,
+    ) -> Any:
+        """Update the overall status (and optionally current stage) of a project."""
 
         try:
-            return await self.project_repo.update_project_status(project_id, status)
+            return await self.project_repo.update_project_status(
+                project_id, status, current_stage=current_stage
+            )
         except Exception as exc:
             raise ProjectNotFoundError(project_id, original=exc) from exc
 
