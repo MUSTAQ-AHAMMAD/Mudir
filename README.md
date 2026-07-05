@@ -33,7 +33,63 @@ progress, sends reminders, escalates delays, and confirms the store opens on tim
 
 ---
 
+## ✨ Features
+
+- 📱 **Lives inside WhatsApp** — team leads coordinate entirely from chat (group or DM)
+- 🧠 **Learns workflows dynamically** — the AI infers project stages from a conversation; works for **any industry** (retail, software, events, construction…)
+- 🎙️ **Voice notes** — Arabic/English speech transcribed on-device (Whisper) and mapped to actions
+- 🖼️ **Image & document intake** — OCR turns permits/receipts into structured updates
+- 🔀 **Stateful orchestration** — a dependency-aware state machine advances stages, detects blockers and computes progress
+- ⏰ **Delay prediction & auto-escalation** — delays ≥ 3 days escalate to the CEO automatically
+- 🌍 **Bilingual, Arabic-first** — every reply is Arabic first with an English fallback
+- 🇸🇦 **Saudi-aware scheduling** — respects the Sun–Thu working week (Friday skip)
+- 🔒 **100% self-hosted** — Ollama + Whisper + BGE-M3 + ChromaDB + NLLB; **no OpenAI, no per-message API cost**, your data stays on your server
+- 📊 **Admin dashboard** — React 18 + Vite + Tailwind, RTL, dark mode, analytics
+- 🚀 **Production-ready** — Docker Compose (GPU/CPU), nginx TLS, monitoring, backups, CI/CD
+
+---
+
 ## 🏗️ Architecture
+
+```mermaid
+graph TB
+    subgraph Users
+        TL[Team Leads · WhatsApp]
+        CEO[CEO / Escalation · WhatsApp]
+        ADMIN[Admins · Browser]
+    end
+    NGINX[nginx · TLS · rate-limit]
+    BACKEND[Backend API · Node.js]
+    ORCHESTRA[ORCHESTRA Engine · Python]
+    FRONTEND[Dashboard · React]
+    subgraph "Self-hosted AI"
+        OLLAMA[Ollama LLM]
+        WHISPER[Whisper STT]
+        EMB[BGE-M3 embeddings]
+        CHROMA[(ChromaDB)]
+        NLLB[NLLB translate + sentiment]
+    end
+    PG[(PostgreSQL)]
+    WATI[WhatsApp · WATI/Twilio]
+
+    TL <--> WATI
+    CEO <--> WATI
+    WATI <--> NGINX
+    ADMIN <--> NGINX
+    NGINX --> BACKEND
+    NGINX --> FRONTEND
+    BACKEND --> ORCHESTRA
+    ORCHESTRA --> OLLAMA
+    ORCHESTRA --> WHISPER
+    ORCHESTRA --> EMB --> CHROMA
+    ORCHESTRA --> NLLB
+    ORCHESTRA --> PG
+    BACKEND --> PG
+    FRONTEND -->|REST /api| BACKEND
+```
+
+More diagrams (data flow + sequence diagrams) live in
+[`docs/architecture.mermaid`](docs/architecture.mermaid).
 
 ```
 backend/                 Node.js/Express service (webhook + REST API + cron)
@@ -131,6 +187,51 @@ mapped to `/complete` and **confirmed** before executing.
 
 ---
 
+## 🧪 Testing
+
+The Python engine has a comprehensive pytest suite (unit + integration + e2e)
+that mocks every external service (Ollama, Whisper, the ML models and the
+WhatsApp API), so it runs anywhere with no GPU, models or network.
+
+```bash
+pip install -r requirements-test.txt
+
+pytest                              # run the whole suite
+pytest --cov=orchestra --cov-report=html   # with coverage
+pytest tests/unit/test_state_machine.py     # a single file
+pytest -m e2e                       # only end-to-end workflow tests
+```
+
+Database integration tests are skipped unless a real PostgreSQL is available:
+
+```bash
+export ORCHESTRA_TEST_DATABASE_URL="postgresql+asyncpg://<user>:<pass>@<host>:5432/orchestra_test"
+pytest tests/integration/test_database.py
+```
+
+CI runs the suite on every PR across Python 3.10 / 3.11 / 3.12 with a PostgreSQL
+service container — see [`.github/workflows/test.yml`](.github/workflows/test.yml).
+The Node backend and React frontend keep their own suites (`npm test`).
+
+---
+
+## 📚 Documentation
+
+| Guide | Audience |
+| --- | --- |
+| [USER_GUIDE.md](USER_GUIDE.md) · [العربية](docs/ar/USER_GUIDE.ar.md) | Team leads using the WhatsApp bot |
+| [ADMIN_GUIDE.md](ADMIN_GUIDE.md) | Company admins configuring teams & workflows |
+| [DEPLOYMENT.md](DEPLOYMENT.md) · [العربية](docs/ar/DEPLOYMENT.ar.md) | Operators deploying the stack |
+| [API_REFERENCE.md](API_REFERENCE.md) | Integrators using the REST API & webhooks |
+| [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Contributors extending the code |
+| [docs/security.md](docs/security.md) | Security model, PDPL/GDPR compliance |
+| [docs/performance.md](docs/performance.md) | Benchmarks, scaling & tuning |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | How to contribute |
+| [العربية · README](docs/ar/README.ar.md) | Arabic project overview |
+
+---
+
 ## 🛡️ Production hardening included
 - Twilio webhook **signature verification** (`X-Twilio-Signature`)
 - **Rate limiting** on the public webhook
@@ -168,3 +269,17 @@ Prompts for generating the visual assets (logo, chat mockups, dashboard, Gantt
 timeline, mobile concept, interaction flow) live in
 [`docs/VISUAL_PROMPTS.md`](docs/VISUAL_PROMPTS.md). Paste them into DALL·E,
 Midjourney, or Stable Diffusion.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the workflow, coding
+standards and PR process, and the [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for
+architecture details. Bug reports and feature requests use the
+[issue templates](.github/ISSUE_TEMPLATE).
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).

@@ -1,0 +1,123 @@
+%% =============================================================================
+%% Mudir / ORCHESTRA — architecture, data-flow and sequence diagrams (Mermaid)
+%% Render at https://mermaid.live or with any Mermaid-aware Markdown viewer.
+%% Each fenced block below is an independent diagram.
+%% =============================================================================
+
+%% -----------------------------------------------------------------------------
+%% 1. System architecture (C4-ish container view)
+%% -----------------------------------------------------------------------------
+graph TB
+    subgraph Users
+        TL[Team Leads<br/>WhatsApp]
+        CEO[CEO / Escalation<br/>WhatsApp]
+        ADMIN[Admins<br/>Web browser]
+    end
+
+    subgraph Edge
+        NGINX[nginx<br/>TLS · rate-limit · routing]
+    end
+
+    subgraph Application
+        BACKEND[Backend API<br/>Node.js / Express<br/>webhook · REST · cron]
+        ORCHESTRA[ORCHESTRA Engine<br/>Python · orchestrator<br/>workflow engine · state machine]
+        FRONTEND[Admin Dashboard<br/>React + Vite]
+    end
+
+    subgraph "Self-hosted AI"
+        OLLAMA[Ollama LLM<br/>Llama 3 / Phi-3]
+        WHISPER[Whisper.cpp<br/>speech-to-text]
+        EMB[BGE-M3 embeddings]
+        CHROMA[(ChromaDB<br/>vector store)]
+        NLLB[NLLB translation<br/>+ AR sentiment]
+    end
+
+    subgraph Data
+        PG[(PostgreSQL)]
+    end
+
+    WATI[WhatsApp Provider<br/>WATI / Twilio]
+
+    TL <-->|messages, voice notes| WATI
+    CEO <-->|escalations| WATI
+    WATI <-->|webhook / send API| NGINX
+    ADMIN <-->|HTTPS| NGINX
+
+    NGINX --> BACKEND
+    NGINX --> FRONTEND
+    BACKEND --> ORCHESTRA
+    ORCHESTRA --> OLLAMA
+    ORCHESTRA --> WHISPER
+    ORCHESTRA --> EMB
+    EMB --> CHROMA
+    ORCHESTRA --> NLLB
+    ORCHESTRA --> PG
+    BACKEND --> PG
+    FRONTEND -->|REST /api| BACKEND
+
+%% -----------------------------------------------------------------------------
+%% 2. Data-flow: an inbound WhatsApp message
+%% -----------------------------------------------------------------------------
+flowchart LR
+    A[Inbound WhatsApp<br/>text / voice / image] --> B{Media?}
+    B -- voice --> C[Whisper transcribe]
+    B -- image --> D[OCR extract text]
+    B -- text --> E[Raw text]
+    C --> E
+    D --> E
+    E --> F[IntentRouter<br/>classify_intent via LLM]
+    F --> G{Intent}
+    G -- create_project --> H[WorkflowEngine.learn_workflow]
+    G -- stage_complete --> I[StateMachine.transition_to]
+    G -- delay --> J[handle_delay → maybe escalate]
+    G -- escalation --> K[notify CEO]
+    G -- status --> L[status report]
+    G -- natural_language --> M[LLM fallback reply]
+    H --> N[Persist project + stages]
+    I --> N
+    J --> N
+    N --> O[Send bilingual reply<br/>Arabic first]
+    K --> O
+    L --> O
+    M --> O
+
+%% -----------------------------------------------------------------------------
+%% 3. Sequence: stage completion advances the workflow
+%% -----------------------------------------------------------------------------
+sequenceDiagram
+    participant Lead as Team Lead
+    participant WA as WhatsApp Provider
+    participant API as Backend / Webhook
+    participant ORC as Orchestrator
+    participant SM as StateMachine
+    participant DB as PostgreSQL
+    participant Next as Next Team Lead
+
+    Lead->>WA: "خلصنا / we're done"
+    WA->>API: webhook (signature verified)
+    API->>ORC: handle_incoming_message()
+    ORC->>ORC: classify_intent → stage_complete
+    ORC->>SM: transition_to(next stage)
+    SM-->>ORC: validated transition
+    ORC->>DB: mark stage complete, advance current_stage
+    ORC->>WA: confirm to sender (AR/EN)
+    ORC->>WA: notify next team lead
+    WA->>Next: "Your stage has started"
+
+%% -----------------------------------------------------------------------------
+%% 4. Sequence: delay auto-escalation
+%% -----------------------------------------------------------------------------
+sequenceDiagram
+    participant Lead as Team Lead
+    participant ORC as Orchestrator
+    participant DB as PostgreSQL
+    participant CEO as CEO / Escalation
+
+    Lead->>ORC: report delay (5 days, reason)
+    ORC->>DB: record delay in project metadata
+    alt delay >= 3 days
+        ORC->>DB: create escalation (priority=medium)
+        ORC->>CEO: escalation notification
+    else delay < 3 days
+        ORC-->>Lead: acknowledged, no escalation
+    end

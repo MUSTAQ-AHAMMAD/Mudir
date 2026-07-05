@@ -1,0 +1,71 @@
+name: "🐛 Bug report"
+description: Report a problem so we can fix it
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please **do not** report security
+        vulnerabilities here — use the security template instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I ..., I expected ..., but instead ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, ordered steps to reproduce the behaviour.
+      placeholder: |
+        1. Send "..." to the bot
+        2. ...
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Backend (Node.js / webhook / API)
+        - ORCHESTRA engine (Python)
+        - Self-hosted AI services (Ollama / Whisper / embeddings / translation)
+        - Database
+        - Frontend dashboard
+        - Deployment / infrastructure
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, deployment profile (GPU/CPU), versions (Python/Node), model names.
+      placeholder: |
+        - OS: Ubuntu 22.04
+        - Profile: GPU (RTX 3060)
+        - Python 3.12 / Node 20
+        - Ollama model: llama3
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste logs or errors. **Redact secrets and personal data.**
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I removed secrets and personal data from this report.
+          required: true

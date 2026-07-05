@@ -156,3 +156,75 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
 See [`.env.production`](.env.production) for the full, commented list of
 environment variables (runtime, database, self-hosted AI services, WATI/Twilio,
 Supabase, business rules, rate limiting, feature flags, monitoring).
+
+Key variables at a glance:
+
+| Variable | Purpose |
+| --- | --- |
+| `NODE_ENV` / `ENV` | Runtime environment (`production`/`staging`) |
+| `PUBLIC_URL` | Public HTTPS base URL (used for webhook + links) |
+| `DATABASE_URL` | PostgreSQL DSN used by the app + engine |
+| `POSTGRES_PASSWORD` | Database password (compose) |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODELS` | LLM endpoint + models to pre-load |
+| `WHISPER_MODEL_PATH` / `WHISPER_BINARY` | Whisper.cpp model + binary |
+| `TWILIO_*` / WATI secret | WhatsApp provider credentials + signature secret |
+| `SUPABASE_*` | Dashboard auth / realtime (optional) |
+| `GRAFANA_ADMIN_PASSWORD` | Monitoring dashboard admin (if monitoring on) |
+
+> Never commit `.env`. Use a secrets manager where possible and rotate
+> credentials regularly. See [docs/security.md](docs/security.md).
+
+---
+
+## 9. Backup and restore
+
+**Backup** (database + ChromaDB vectors):
+
+```bash
+./scripts/backup.sh            # writes a timestamped archive under backups/
+```
+
+Schedule daily backups (see §4 cron example) and store copies **off-host**
+(encrypted). Test restores regularly — an untested backup is not a backup.
+
+**Restore** (disaster recovery outline):
+
+```bash
+# 1. Stop the app tier so nothing writes during restore
+docker compose stop backend frontend
+
+# 2. Restore PostgreSQL from a dump (example)
+gunzip -c backups/<timestamp>/postgres.sql.gz | \
+  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+
+# 3. Restore ChromaDB data volume from its archive (see backup.sh for layout)
+
+# 4. Bring the stack back up and verify
+docker compose start backend frontend
+./scripts/monitor.sh
+```
+
+Encrypt backup archives and the PostgreSQL volume at rest (e.g. LUKS).
+
+---
+
+## 10. Kubernetes
+
+For multi-node scaling, apply the manifests in
+[`k8s/deployment.yaml`](k8s/deployment.yaml) with an Ingress controller and
+cert-manager for TLS. Run the AI services as dedicated (GPU-scheduled)
+Deployments, keep the backend stateless behind a Service/HPA, and use a managed
+or replicated PostgreSQL.
+
+---
+
+## 11. Performance tuning & monitoring
+
+- **Sizing, benchmarks, tuning and load testing:** see
+  [docs/performance.md](docs/performance.md).
+- **Monitoring:** enable the Prometheus + Grafana overlay (§3) and alert on
+  GPU/CPU saturation, p95 inference latency, error-rate spikes, low disk and DB
+  connection saturation.
+- Prefer a **GPU** profile for production LLM/Whisper latency; scale the
+  stateless backend horizontally and add Redis for shared voice-confirmation
+  state before running multiple instances.
