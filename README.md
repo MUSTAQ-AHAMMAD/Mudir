@@ -147,11 +147,19 @@ mapped to `/complete` and **confirmed** before executing.
 ---
 
 ## 🚢 Deployment
-- **Docker:** `./deploy.sh docker` (uses `docker-compose.yml`)
+- **Self-hosted production stack:** see [`DEPLOYMENT.md`](DEPLOYMENT.md) — full
+  Docker Compose stack (Ollama, Whisper, ChromaDB, PostgreSQL, backend, frontend,
+  nginx) with GPU/CPU profiles, monitoring, TLS and operational scripts.
+  ```bash
+  cp .env.production .env      # fill in secrets
+  ./scripts/deploy.sh gpu      # or: ./scripts/deploy.sh cpu
+  ./scripts/monitor.sh         # health snapshot
+  ```
 - **Render.com:** connect the repo — [`render.yaml`](render.yaml) is a blueprint
 - **Railway.app:** `./deploy.sh railway` (uses [`railway.json`](railway.json))
 
-Set all secret env vars in the platform dashboard (never commit `.env`).
+Set all secret env vars in the platform dashboard or a local `.env`
+(never commit `.env`).
 
 ---
 

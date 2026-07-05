@@ -1,0 +1,11 @@
+apiVersion: 1
+# Grafana dashboard provisioning — load JSON dashboards from disk.
+providers:
+  - name: mudir
+    orgId: 1
+    folder: Mudir
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

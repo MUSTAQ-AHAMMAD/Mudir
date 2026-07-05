@@ -1,0 +1,387 @@
+# =============================================================================
+# k8s/deployment.yaml — Kubernetes manifests for Mudir / ORCHESTRA (optional).
+#
+# A single-file, namespaced deployment covering: ConfigMap, Secret,
+# PersistentVolumeClaims, Deployments + Services for each component, and an
+# Ingress. This is a starting point — tune resource requests/limits, storage
+# classes, and replica counts for your cluster.
+#
+#   kubectl apply -f k8s/deployment.yaml
+#
+# Populate the Secret first (values below are placeholders and MUST be replaced,
+# ideally via a sealed-secrets / external-secrets operator rather than commits).
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mudir
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mudir-config
+  namespace: mudir
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  OLLAMA_HOST: "http://ollama:11434"
+  OLLAMA_MODELS: "llama3:8b"
+  WHISPER_URL: "http://whisper:9000"
+  WHISPER_MODEL: "medium"
+  CHROMA_HOST: "chromadb"
+  CHROMA_PORT: "8000"
+  TIMEZONE: "Asia/Riyadh"
+  WEEKEND_DAYS: "5,6"
+  ESCALATE_AFTER_DAYS: "2"
+  DEFAULT_TEAM_COUNT: "3"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mudir-secrets
+  namespace: mudir
+type: Opaque
+stringData:
+  # Replace ALL values below with real secrets (or manage via an operator).
+  POSTGRES_USER: "mudir"
+  POSTGRES_PASSWORD: "change_me_strong_password"
+  POSTGRES_DB: "mudir"
+  DATABASE_URL: "postgresql://mudir:<PASSWORD>@postgres:5432/mudir"
+  SUPABASE_URL: ""
+  SUPABASE_SERVICE_KEY: ""
+  WATI_API_KEY: ""
+  WATI_WEBHOOK_SECRET: ""
+  TWILIO_ACCOUNT_SID: ""
+  TWILIO_AUTH_TOKEN: ""
+  OPENAI_API_KEY: ""
+---
+# ---- PersistentVolumeClaims -------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: mudir
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chroma-data
+  namespace: mudir
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: mudir
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+---
+# ---- Ollama -----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: mudir
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ollama }
+  template:
+    metadata:
+      labels: { app: ollama }
+    spec:
+      containers:
+        - name: ollama
+          image: mudir/ollama:latest
+          ports:
+            - containerPort: 11434
+          envFrom:
+            - configMapRef: { name: mudir-config }
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+          resources:
+            requests: { memory: "4Gi", cpu: "1" }
+            limits: { memory: "32Gi", nvidia.com/gpu: 1 }
+          readinessProbe:
+            exec: { command: ["ollama", "list"] }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: ollama-models }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: mudir
+spec:
+  selector: { app: ollama }
+  ports:
+    - port: 11434
+      targetPort: 11434
+---
+# ---- Whisper ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whisper
+  namespace: mudir
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: whisper }
+  template:
+    metadata:
+      labels: { app: whisper }
+    spec:
+      containers:
+        - name: whisper
+          image: ghcr.io/ggerganov/whisper.cpp:main
+          args: ["./server", "--host", "0.0.0.0", "--port", "9000", "-m", "/models/ggml-base.bin"]
+          ports:
+            - containerPort: 9000
+          resources:
+            requests: { memory: "1Gi", cpu: "500m" }
+            limits: { memory: "4Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whisper
+  namespace: mudir
+spec:
+  selector: { app: whisper }
+  ports:
+    - port: 9000
+      targetPort: 9000
+---
+# ---- ChromaDB ---------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chromadb
+  namespace: mudir
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: chromadb }
+  template:
+    metadata:
+      labels: { app: chromadb }
+    spec:
+      containers:
+        - name: chromadb
+          image: chromadb/chroma:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: IS_PERSISTENT
+              value: "TRUE"
+            - name: ANONYMIZED_TELEMETRY
+              value: "FALSE"
+          volumeMounts:
+            - name: data
+              mountPath: /chroma/chroma
+          readinessProbe:
+            httpGet: { path: /api/v1/heartbeat, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: chroma-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chromadb
+  namespace: mudir
+spec:
+  selector: { app: chromadb }
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# ---- PostgreSQL -------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: mudir
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: mudir-secrets, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: mudir-secrets, key: POSTGRES_PASSWORD } }
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: mudir-secrets, key: POSTGRES_DB } }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "mudir"] }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: mudir
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# ---- Backend ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mudir
+spec:
+  replicas: 2   # horizontally scalable stateless API
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+    spec:
+      containers:
+        - name: backend
+          image: mudir/backend:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef: { name: mudir-config }
+            - secretRef: { name: mudir-secrets }
+          resources:
+            requests: { memory: "256Mi", cpu: "250m" }
+            limits: { memory: "1Gi", cpu: "1" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: mudir
+spec:
+  selector: { app: backend }
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+# ---- Frontend ---------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mudir
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: frontend }
+  template:
+    metadata:
+      labels: { app: frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: mudir/frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { memory: "64Mi", cpu: "100m" }
+            limits: { memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: mudir
+spec:
+  selector: { app: frontend }
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# ---- Ingress ----------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mudir-ingress
+  namespace: mudir
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["example.com"]
+      secretName: mudir-tls
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port: { number: 3000 }
+          - path: /webhook
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port: { number: 3000 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port: { number: 80 }
