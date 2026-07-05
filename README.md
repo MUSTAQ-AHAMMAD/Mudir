@@ -54,8 +54,15 @@ backend/                 Node.js/Express service (webhook + REST API + cron)
 ├── migrations/          SQL: 0001_init.sql (schema), 0002_seed.sql (demo data)
 └── tests/               Jest: state machine, utils, e2e flow, voice, cron, load
 
-frontend/                React + Vite + Tailwind admin dashboard
-└── src/components/      Dashboard, ProjectTimeline, TeamOnboarding, Analytics, Settings
+frontend/                React + Vite + Tailwind admin dashboard (see frontend/README.md)
+├── src/pages/           Dashboard, Projects, ProjectDetail, Workflows, Teams,
+│                        Analytics, Settings, WhatsAppSettings, Login
+├── src/components/      Reusable UI (ProjectCard, StatusBadge, ProgressBar,
+│                        StageTimeline, Sidebar, Header, Chart, Modal, Toast, …)
+├── src/hooks/           Data + state hooks (React Query, realtime, auth, toasts)
+├── src/api/             Supabase client + data modules (REST fallback)
+├── src/context/         Global state (App, Auth, Theme — dark mode + RTL)
+└── src/utils/           Helpers (date, status, validators, export, colors, formatting)
 ```
 
 ### State machine
@@ -93,10 +100,17 @@ Point your Twilio WhatsApp webhook at `POST https://<public-url>/webhook`
 ### Frontend
 ```bash
 cd frontend
+cp .env.example .env          # add VITE_SUPABASE_* (optional: demo mode works without)
 npm install
 npm run dev                   # http://localhost:5173 (proxies /api → backend)
 npm run build                 # production build
+npm test                      # Vitest unit + component tests
 ```
+
+The dashboard is Arabic-first (RTL) with a light/dark theme and an in-app
+Arabic ⇄ English toggle. It uses Supabase for auth + real-time updates, React
+Query for data fetching and Chart.js for charts. See
+[`frontend/README.md`](frontend/README.md) for full details.
 
 ---
 

@@ -1,61 +1,67 @@
-// App.jsx — layout shell with the left sidebar navigation and routed pages.
-import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
-import Dashboard from './components/Dashboard';
-import ProjectTimeline from './components/ProjectTimeline';
-import TeamOnboarding from './components/TeamOnboarding';
-import Analytics from './components/Analytics';
-import Settings from './components/Settings';
-
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { to: '/timeline', label: 'Timeline', icon: '🗓️' },
-  { to: '/onboarding', label: 'Teams', icon: '👥' },
-  { to: '/analytics', label: 'Analytics', icon: '📈' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
-];
+// App.jsx — application shell: sidebar + header layout with routed pages, guarded
+// by authentication. Renders the Login screen when the user is not signed in.
+import { useState } from 'react';
+import { Route, Routes, Navigate } from 'react-router-dom';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import Toast from './components/Toast';
+import Loading from './components/Loading';
+import Dashboard from './pages/Dashboard';
+import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
+import Workflows from './pages/Workflows';
+import Teams from './pages/Teams';
+import Analytics from './pages/Analytics';
+import Settings from './pages/Settings';
+import WhatsAppSettings from './pages/WhatsAppSettings';
+import Login from './pages/Login';
+import { useAuth } from './hooks/useAuth';
 
 export default function App() {
-  return (
-    <div className="min-h-screen flex">
-      {/* Sidebar */}
-      <aside className="w-56 bg-brand-green text-white flex flex-col print:hidden">
-        <div className="px-4 py-5 flex items-center gap-2 border-b border-white/10">
-          <span className="text-2xl">🌙</span>
-          <div>
-            <div className="font-bold text-brand-gold">مدير</div>
-            <div className="text-xs -mt-0.5">Mudir</div>
-          </div>
-        </div>
-        <nav className="flex-1 p-2 space-y-1">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                  isActive ? 'bg-white/15 text-brand-gold' : 'hover:bg-white/10'
-                }`
-              }
-            >
-              <span>{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="p-4 text-xs text-white/50">AI Project Coordinator</div>
-      </aside>
+  const { isAuthenticated, loading } = useAuth();
+  const [navOpen, setNavOpen] = useState(false);
 
-      {/* Main content */}
-      <main className="flex-1 p-6 overflow-auto">
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/timeline" element={<ProjectTimeline />} />
-          <Route path="/onboarding" element={<TeamOnboarding />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </main>
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loading />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Login />
+        <Toast />
+      </>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
+      {/* Mobile backdrop when the sidebar is open. */}
+      {navOpen && (
+        <div className="fixed inset-0 z-20 bg-black/40 md:hidden" onClick={() => setNavOpen(false)} aria-hidden="true" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header onMenu={() => setNavOpen((o) => !o)} />
+        <main className="flex-1 overflow-auto bg-gray-50 p-6 dark:bg-brand-greenDark">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
+            <Route path="/workflows" element={<Workflows />} />
+            <Route path="/teams" element={<Teams />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/whatsapp" element={<WhatsAppSettings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+      <Toast />
     </div>
   );
 }
