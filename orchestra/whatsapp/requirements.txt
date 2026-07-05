@@ -1,0 +1,27 @@
+# ORCHESTRA WhatsApp integration layer — Python dependencies.
+#
+# Install into the same virtual environment as the AI services / database:
+#     source ~/.orchestra/venv/bin/activate
+#     pip install -r orchestra/whatsapp/requirements.txt
+#
+# The package imports every heavy dependency lazily, so it can be imported and
+# unit-tested (see orchestra/whatsapp/tests) without any of these installed.
+# ---------------------------------------------------------------------------
+
+# Async HTTP client used by the WATI API client (connection pooling + retries).
+httpx>=0.27,<1
+
+# ---------------------------------------------------------------------------
+# Optional — only needed for rich media pre-processing in handlers.py.
+# Voice transcription reuses the self-hosted Whisper service
+# (orchestra/services), so no extra package is required for audio.
+# ---------------------------------------------------------------------------
+
+# Image OCR (Arabic + English). Requires the Tesseract binary + Arabic pack:
+#     apt-get install tesseract-ocr tesseract-ocr-ara
+# pytesseract>=0.3.13,<1
+# Pillow>=10.4,<12
+
+# Document text extraction.
+# pypdf>=5.1,<6           # PDF
+# python-docx>=1.1,<2     # DOCX
