@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+# -----------------------------------------------------------------------------
+# docker/Dockerfile.ollama — Ollama LLM server with model pre-loading.
+#
+# On startup an entrypoint pulls the models named in OLLAMA_MODELS (comma or
+# space separated) so the first inference request is not blocked on a download.
+# NVIDIA GPU acceleration is used automatically when the container is run with
+# the NVIDIA runtime (see docker-compose.gpu.yml); it falls back to CPU
+# otherwise.
+#
+# Build context is the repository root, e.g.:
+#   docker build -f docker/Dockerfile.ollama -t mudir-ollama .
+# -----------------------------------------------------------------------------
+FROM ollama/ollama:latest
+
+# Space/comma-separated list of models to pre-pull on first start.
+ENV OLLAMA_MODELS="llama3:8b" \
+    OLLAMA_HOST="0.0.0.0:11434"
+
+# Bring in the hardware auto-detection helper so operators can (re)run it inside
+# the container to pick models that fit the host.
+COPY orchestra/auto-install.sh /usr/local/bin/auto-install.sh
+COPY docker/ollama-entrypoint.sh /usr/local/bin/ollama-entrypoint.sh
+RUN chmod +x /usr/local/bin/auto-install.sh /usr/local/bin/ollama-entrypoint.sh
+
+EXPOSE 11434
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD ollama list >/dev/null 2>&1 || exit 1
+
+# The custom entrypoint boots the server, waits for it, pulls models, then waits.
+ENTRYPOINT ["/usr/local/bin/ollama-entrypoint.sh"]

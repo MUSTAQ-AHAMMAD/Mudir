@@ -1,0 +1,43 @@
+# =============================================================================
+# docker-compose.gpu.yml — GPU-accelerated overlay.
+#
+# Adds the NVIDIA runtime to Ollama (and Whisper) and raises resource limits
+# so larger models fit. Requires NVIDIA drivers + the NVIDIA Container Toolkit
+# on the host.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# =============================================================================
+
+services:
+  ollama:
+    environment:
+      # Default to a larger model when a GPU is present.
+      OLLAMA_MODELS: ${OLLAMA_MODELS:-llama3:8b}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        limits:
+          memory: 32g
+        reservations:
+          memory: 8g
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  whisper:
+    image: ${WHISPER_IMAGE:-ghcr.io/ggerganov/whisper.cpp:main-cuda}
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-medium}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

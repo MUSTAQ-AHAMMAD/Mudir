@@ -1,20 +1,240 @@
-# docker-compose for local development.
-# Runs the Mudir backend. Database is Supabase (hosted) — configure SUPABASE_*
-# in your .env. To expose the local webhook to Twilio, tunnel with e.g. ngrok:
-#   ngrok http 3000   (then set PUBLIC_URL to the ngrok https URL)
+# =============================================================================
+# docker-compose.yml — production stack for Mudir / ORCHESTRA.
+#
+# This is the BASE stack. Combine it with an overlay to pick a hardware profile:
+#
+#   GPU:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#   CPU:  docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+#
+# All secrets/config come from a .env file in this directory (copy from
+# .env.production or .env.staging). NEVER commit a populated .env.
+#
+# Services:
+#   ollama    — self-hosted LLM server (Llama 3 / Phi-3)
+#   whisper   — whisper.cpp HTTP server for voice transcription
+#   chromadb  — vector database for embeddings/RAG
+#   postgres  — PostgreSQL (Supabase-compatible) for application data
+#   backend   — Node.js/Express API + WhatsApp webhook + cron
+#   frontend  — nginx serving the built React dashboard
+#   nginx     — edge reverse proxy (TLS termination, routing, rate limiting)
+# =============================================================================
+
+networks:
+  # Public-facing edge network (only nginx is attached to the host).
+  frontend_net:
+    driver: bridge
+  # Private backend network — data services are NOT published to the host.
+  backend_net:
+    driver: bridge
+    internal: false
+
+volumes:
+  ollama_models:
+  whisper_models:
+  chroma_data:
+  postgres_data:
+  nginx_certs:
+  nginx_acme:
 
 services:
-  backend:
-    build: ./backend
-    ports:
-      - "3000:3000"
-    env_file:
-      - ./backend/.env
-    environment:
-      NODE_ENV: development
+  # ---------------------------------------------------------------------------
+  # Ollama — self-hosted LLM inference server.
+  # ---------------------------------------------------------------------------
+  ollama:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ollama
+    image: mudir/ollama:latest
     restart: unless-stopped
+    environment:
+      OLLAMA_MODELS: ${OLLAMA_MODELS:-llama3:8b}
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+        reservations:
+          memory: 4g
+
+  # ---------------------------------------------------------------------------
+  # Whisper — whisper.cpp HTTP server for voice-note transcription.
+  # ---------------------------------------------------------------------------
+  whisper:
+    image: ${WHISPER_IMAGE:-ghcr.io/ggerganov/whisper.cpp:main}
+    restart: unless-stopped
+    command: >
+      ./server --host 0.0.0.0 --port 9000
+      -m /models/ggml-${WHISPER_MODEL:-base}.bin
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+    volumes:
+      - whisper_models:/models
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+  # ---------------------------------------------------------------------------
+  # ChromaDB — vector database for embeddings / semantic search.
+  # ---------------------------------------------------------------------------
+  chromadb:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/heartbeat >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — application database (Supabase-compatible schema).
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mudir}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-mudir}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mudir} -d ${POSTGRES_DB:-mudir}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # ---------------------------------------------------------------------------
+  # Backend — Node.js/Express API, WhatsApp webhook and cron scheduler.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: mudir/backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Point the backend at the in-cluster services by their compose DNS names.
+      OLLAMA_HOST: http://ollama:11434
+      WHISPER_URL: http://whisper:9000
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      DATABASE_URL: postgres://${POSTGRES_USER:-mudir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mudir}
+    networks:
+      - backend_net
+      - frontend_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # ---------------------------------------------------------------------------
+  # Frontend — nginx serving the compiled React dashboard.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    image: mudir/frontend:latest
+    restart: unless-stopped
+    networks:
+      - frontend_net
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # ---------------------------------------------------------------------------
+  # nginx — edge reverse proxy: TLS termination, routing, rate limiting.
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_certs:/etc/letsencrypt:ro
+      - nginx_acme:/var/www/certbot:ro
+    networks:
+      - frontend_net
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256m

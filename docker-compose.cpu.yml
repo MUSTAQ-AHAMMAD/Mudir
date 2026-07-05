@@ -1,0 +1,30 @@
+# =============================================================================
+# docker-compose.cpu.yml — CPU-only overlay.
+#
+# Selects lightweight models and modest resource limits so the stack runs on a
+# CPU-only server (no NVIDIA drivers required).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# =============================================================================
+
+services:
+  ollama:
+    environment:
+      # Small, CPU-friendly model.
+      OLLAMA_MODELS: ${OLLAMA_MODELS:-phi3:mini}
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+        reservations:
+          memory: 2g
+
+  whisper:
+    image: ${WHISPER_IMAGE:-ghcr.io/ggerganov/whisper.cpp:main}
+    environment:
+      # Smallest usable transcription model on CPU.
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+    deploy:
+      resources:
+        limits:
+          memory: 2g
