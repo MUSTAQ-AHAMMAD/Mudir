@@ -18,7 +18,7 @@ export default function Sidebar({ open, onNavigate }) {
     <aside
       className={`fixed inset-y-0 z-30 flex w-56 flex-col bg-brand-green bg-saudi-pattern text-white transition-transform
         ltr:left-0 rtl:right-0 md:static md:translate-x-0 print:hidden
-        ${open ? 'translate-x-0' : 'ltr:-translate-x-full rtl:translate-x-full'}`}
+        ${open ? 'translate-x-0' : 'max-md:ltr:-translate-x-full max-md:rtl:translate-x-full'}`}
       aria-label="Main navigation"
     >
       <div className="flex items-center gap-2 border-b border-white/10 px-4 py-5">

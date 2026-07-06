@@ -17,6 +17,12 @@ Chart.js visualisations.
 - Graceful **REST fallback**: when Supabase env vars are absent, the app talks to
   the existing Node backend at `/api` and runs in a permissive demo auth mode.
 
+## 📸 Screenshots
+
+See the [screenshot gallery](../docs/screenshots/README.md) for real captures of
+every page (Dashboard, Projects, Project Detail, Workflows, Teams, Analytics,
+Settings, WhatsApp) in light/dark themes and Arabic (RTL) / English (LTR).
+
 ## 🚀 Getting started
 
 ```bash
