@@ -1,0 +1,20 @@
+# ORCHESTRA database layer — Python dependencies.
+#
+# Install into the same virtual environment as the AI services:
+#     source ~/.orchestra/venv/bin/activate
+#     pip install -r orchestra/database/requirements.txt
+# ---------------------------------------------------------------------------
+
+# Async ORM + PostgreSQL driver (primary data-access path).
+SQLAlchemy[asyncio]>=2.0.36,<3
+asyncpg>=0.30.0,<1
+
+# Schema migrations.
+alembic>=1.14.0,<2
+
+# Synchronous driver used by Alembic (env.py uses the libpq/psycopg URL).
+psycopg2-binary>=2.9.10,<3
+
+# Optional: Supabase REST / realtime client (imported lazily by
+# supabase_client.py). Only required when using REST/realtime features.
+supabase>=2.10.0,<3

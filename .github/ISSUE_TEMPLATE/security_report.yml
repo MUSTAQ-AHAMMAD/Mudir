@@ -1,0 +1,56 @@
+name: "🔒 Security report"
+description: Report a security vulnerability (please read first)
+title: "[Security]: "
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ Please do not disclose vulnerabilities publicly
+
+        If your report contains sensitive details that could enable an attack,
+        **do not file a public issue**. Instead, use GitHub's private
+        vulnerability reporting for this repository
+        (**Security → Report a vulnerability**), or contact the maintainers
+        privately. See [docs/security.md](../../docs/security.md).
+
+        Use this template only for **non-sensitive** security hardening
+        suggestions, or as a placeholder that contains **no exploit details**.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: High-level description WITHOUT exploit details or secrets.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suspected severity
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: component
+    attributes:
+      label: Affected component / version
+      placeholder: e.g. webhook signature validation, backend v1.0.0
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What could an attacker achieve? (No step-by-step exploit here.)
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: This report contains no secrets, personal data, or working exploit details.
+          required: true
+        - label: I understand sensitive details should be sent privately, not in a public issue.
+          required: true

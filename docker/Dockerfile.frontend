@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# -----------------------------------------------------------------------------
+# docker/Dockerfile.frontend — build the React/Vite dashboard and serve the
+# static bundle with nginx (alpine).
+#
+# Build context is the repository root, e.g.:
+#   docker build -f docker/Dockerfile.frontend -t mudir-frontend .
+#
+# Build-time public config is passed via --build-arg (Vite inlines VITE_* at
+# build time), e.g.:
+#   --build-arg VITE_SUPABASE_URL=... --build-arg VITE_SUPABASE_ANON_KEY=...
+# -----------------------------------------------------------------------------
+
+# ---- Stage 1: build the static assets with Vite -----------------------------
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Public (non-secret) build-time variables consumed by Vite.
+ARG VITE_API_URL=/api
+ARG VITE_SUPABASE_URL=""
+ARG VITE_SUPABASE_ANON_KEY=""
+ENV VITE_API_URL=$VITE_API_URL \
+    VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: serve with nginx ----------------------------------------------
+FROM nginx:1.27-alpine AS runtime
+
+# SPA + gzip + static-asset caching config for the frontend container itself.
+COPY docker/frontend-nginx.conf /etc/nginx/conf.d/default.conf
+
+# Ship the compiled bundle.
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

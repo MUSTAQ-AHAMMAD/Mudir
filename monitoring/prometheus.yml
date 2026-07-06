@@ -1,0 +1,48 @@
+# =============================================================================
+# monitoring/prometheus.yml — Prometheus scrape + alerting configuration.
+#
+# Scrapes Prometheus itself, the backend (expects a /metrics endpoint), and
+# host/container exporters when present (cAdvisor, node-exporter, nvidia).
+# Alert rules live in alert_rules.yml (mounted alongside this file).
+# =============================================================================
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: mudir
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+# Alertmanager (optional — run an alertmanager container and point here).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            # - alertmanager:9093
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Backend API — expose Prometheus metrics at /metrics (e.g. via prom-client).
+  - job_name: mudir-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:3000"]
+
+  # Container metrics (run google/cadvisor in the monitoring overlay).
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Host metrics (run prom/node-exporter on the host).
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # GPU metrics (run nvidia/dcgm-exporter when GPUs are present).
+  - job_name: dcgm
+    static_configs:
+      - targets: ["dcgm-exporter:9400"]

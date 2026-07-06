@@ -1,0 +1,39 @@
+# render.yaml — one-click deploy for Render.com
+# Docs: https://render.com/docs/blueprint-spec
+# Set the secret env vars (TWILIO_*, SUPABASE_*, OPENAI_*) in the Render
+# dashboard; they are marked sync:false so they are never stored in git.
+
+services:
+  - type: web
+    name: mudir-backend
+    env: node
+    region: frankfurt
+    plan: starter
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TIMEZONE
+        value: Asia/Riyadh
+      - key: WEEKEND_DAYS
+        value: "5,6"
+      - key: ESCALATE_AFTER_DAYS
+        value: "2"
+      - key: PUBLIC_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

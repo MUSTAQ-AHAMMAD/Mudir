@@ -1,0 +1,73 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "schemaVersion": 39,
+  "title": "Mudir — Project & WhatsApp Metrics",
+  "tags": ["mudir", "projects", "whatsapp"],
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active Projects",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "mudir_projects_active", "legendFormat": "active" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Tasks Overdue",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "mudir_tasks_overdue", "legendFormat": "overdue" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "WhatsApp Messages Sent (rate)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (direction) (rate(mudir_whatsapp_messages_total[5m]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "WhatsApp Webhook Errors",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(rate(mudir_whatsapp_webhook_errors_total[5m]))",
+          "legendFormat": "errors/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Projects by Stage",
+      "type": "piechart",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (stage) (mudir_projects_by_stage)",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    }
+  ]
+}
