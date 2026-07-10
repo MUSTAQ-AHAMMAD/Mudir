@@ -34,6 +34,7 @@ from .exceptions import (
 )
 from .intent_router import IntentRouter
 from .project_manager import ProjectManager
+from .reputation import ReputationTracker, outcome_from_task
 from .scheduler import Scheduler
 from .state_machine import StateMachine
 from .task_manager import TaskManager
@@ -56,6 +57,7 @@ class Orchestrator:
         intent_router: Optional[IntentRouter] = None,
         context_manager: Optional[ContextManager] = None,
         scheduler: Optional[Scheduler] = None,
+        reputation: Optional[ReputationTracker] = None,
         project_repo: Any = None,
         task_repo: Any = None,
         workflow_repo: Any = None,
@@ -71,7 +73,11 @@ class Orchestrator:
         self.whatsapp_service = whatsapp_service
         self.workflow_engine = workflow_engine or WorkflowEngine()
         self.project_manager = project_manager or ProjectManager()
-        self.task_manager = task_manager or TaskManager()
+        # Shared reputation tracker: records task outcomes and feeds team scores
+        # into assignment. Built over the injected learning repo so tests stay
+        # database-free.
+        self.reputation = reputation or ReputationTracker(learning_repo=learning_repo)
+        self.task_manager = task_manager or TaskManager(reputation=self.reputation)
         self.team_coordinator = team_coordinator or TeamCoordinator(
             whatsapp_service=whatsapp_service
         )
@@ -353,12 +359,36 @@ class Orchestrator:
         """Mark a task as complete."""
 
         task = await self.task_manager.get_task(task_id)
-        await self.task_repo.complete_task(task_id)
+        completed = await self.task_repo.complete_task(task_id)
+        await self._record_task_outcome(completed or task)
         _log.info("Task %s completed by %s", task_id, sender)
         return {
             "reply": f"✅ Task *{task.title}* marked as done.",
             "task_id": str(task_id),
         }
+
+    async def _record_task_outcome(self, task: Any) -> None:
+        """Record a completed task's outcome into the reputation ledger.
+
+        Best-effort: reputation must never break the completion reply, so any
+        failure (missing project, no team, no deadline) is swallowed and logged.
+        """
+
+        try:
+            project = None
+            project_id = getattr(task, "project_id", None)
+            if project_id is not None:
+                try:
+                    project = await self.project_repo.get_project(project_id)
+                except Exception:  # noqa: BLE001 - project lookup is optional
+                    project = None
+            outcome = outcome_from_task(task, project=project)
+            if outcome is None:
+                return
+            company_id = getattr(project, "company_id", None)
+            await self.reputation.record_outcome(outcome, company_id=company_id)
+        except Exception as exc:  # noqa: BLE001 - ledger writes are non-critical
+            _log.debug("Skipped recording task outcome: %s", exc)
 
     async def handle_delay(
         self,

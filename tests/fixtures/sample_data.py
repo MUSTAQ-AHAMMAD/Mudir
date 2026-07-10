@@ -230,6 +230,7 @@ class InMemoryState:
         self.messages: list[dict[str, Any]] = []
         self.sessions: dict[str, SimpleNamespace] = {}  # group_id -> session
         self.notifications: list[dict[str, Any]] = []
+        self.learning: list[SimpleNamespace] = []  # learning_data observations
 
     def stage_by_id(self, stage_id: Any) -> Optional[dict[str, Any]]:
         for stages in self.stages.values():
@@ -444,6 +445,30 @@ class FakeCommunicationRepo:
         return SimpleNamespace(id=new_id(), **data)
 
 
+class FakeLearningRepo:
+    """In-memory stand-in for :class:`LearningRepository`."""
+
+    def __init__(self, state: InMemoryState) -> None:
+        self.state = state
+
+    async def save_observation(self, data: dict[str, Any], *, session: Any = None) -> Any:
+        record = SimpleNamespace(id=new_id(), **data)
+        self.state.learning.append(record)
+        return record
+
+    async def get_learning_data(self, company_id: Optional[Any] = None, *,
+                                observation_type: Optional[str] = None,
+                                limit: Optional[int] = None, session: Any = None) -> list[Any]:
+        rows = []
+        for row in self.state.learning:
+            if observation_type is not None and getattr(row, "observation_type", None) != observation_type:
+                continue
+            if company_id is not None and str(getattr(row, "company_id", None)) != str(company_id):
+                continue
+            rows.append(row)
+        return rows if limit is None else rows[:limit]
+
+
 class FakeWhatsAppRepo:
     def __init__(self, state: InMemoryState) -> None:
         self.state = state
@@ -556,7 +581,7 @@ def build_orchestrator(
         escalation_repo=FakeEscalationRepo(state),
         communication_repo=FakeCommunicationRepo(state),
         whatsapp_repo=FakeWhatsAppRepo(state),
-        learning_repo=SimpleNamespace(),
+        learning_repo=FakeLearningRepo(state),
     )
 
     # Use the real WorkflowEngine but with the fake LLM (exercises the real
@@ -610,6 +635,7 @@ __all__ = [
     "FakeTeamCoordinator",
     "FakeEscalationRepo",
     "FakeCommunicationRepo",
+    "FakeLearningRepo",
     "FakeWhatsAppRepo",
     "FakeContextManager",
     "FakeIntentRouter",
