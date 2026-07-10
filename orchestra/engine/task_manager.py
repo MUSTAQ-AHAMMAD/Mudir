@@ -27,10 +27,15 @@ class TaskManager:
         task_repo: Any = None,
         team_repo: Any = None,
         embeddings_service: Any = None,
+        reputation: Any = None,
     ) -> None:
         self._task_repo = task_repo
         self._team_repo = team_repo
         self._embeddings = embeddings_service
+        # Optional reputation tracker. When absent, assignment is pure task/skill
+        # fit (unchanged behaviour); when present, proven on-time teams are
+        # nudged up the ranking and chronically late ones down.
+        self._reputation = reputation
 
     # -- lazy dependency accessors -----------------------------------------
     @property
@@ -193,12 +198,46 @@ class TaskManager:
             _log.warning("Embeddings unavailable, falling back to keywords: %s", exc)
             scores = [self._keyword_score(query, profile) for profile in profiles]
 
+        scores = await self._apply_reputation(teams, scores, company_id=company_id)
+
         best_index = max(range(len(teams)), key=lambda i: scores[i])
         best_team = teams[best_index]
         _log.info(
             "Auto-assigned to team id=%s score=%.3f", best_team.id, scores[best_index]
         )
         return best_team
+
+    async def _apply_reputation(
+        self,
+        teams: Sequence[Any],
+        scores: list[float],
+        *,
+        company_id: Optional[Any],
+    ) -> list[float]:
+        """Nudge fit ``scores`` by each team's reputation (a tie-breaker).
+
+        Degrades to the untouched scores when no reputation tracker is wired or
+        the lookup fails, so assignment never depends on reputation being
+        available.
+        """
+
+        if self._reputation is None:
+            return scores
+        from .reputation import NEUTRAL_SCORE, REPUTATION_BLEND
+
+        try:
+            reputations = await self._reputation.get_reputations(
+                [getattr(team, "id", None) for team in teams], company_id=company_id
+            )
+        except Exception as exc:  # noqa: BLE001 - reputation is best-effort
+            _log.warning("Reputation lookup failed, ignoring: %s", exc)
+            return scores
+
+        adjusted: list[float] = []
+        for team, score in zip(teams, scores):
+            rep = reputations.get(str(getattr(team, "id", "")), NEUTRAL_SCORE)
+            adjusted.append(score + REPUTATION_BLEND * (rep - NEUTRAL_SCORE))
+        return adjusted
 
     async def _candidate_teams(self, company_id: Optional[Any]) -> list[Any]:
         filters: dict[str, Any] = {"is_active": True}

@@ -51,6 +51,13 @@ from .exceptions import (
 from .intent_router import INTENT_HANDLERS, IntentRouter
 from .orchestrator import Orchestrator, get_orchestrator, reset_orchestrator
 from .project_manager import ProjectManager
+from .reputation import (
+    NEUTRAL_SCORE,
+    ReputationTracker,
+    TaskOutcome,
+    outcome_from_task,
+    reputation_score,
+)
 from .scheduler import DEFAULT_WORKING_DAYS, ScheduledJob, Scheduler
 from .state_machine import StateMachine
 from .task_manager import TaskManager
@@ -68,6 +75,11 @@ __all__ = [
     "StateMachine",
     "ProjectManager",
     "TaskManager",
+    "ReputationTracker",
+    "TaskOutcome",
+    "outcome_from_task",
+    "reputation_score",
+    "NEUTRAL_SCORE",
     "TeamCoordinator",
     "WhatsAppSender",
     "IntentRouter",
